@@ -91,7 +91,7 @@ func main() {
 	// Server configuration
 	port := os.Getenv("PORT")
 	if port == "" || len(port) > 5 {
-		port = "8080"
+		port = "8082"
 	}
 
 	// Server startup messages
