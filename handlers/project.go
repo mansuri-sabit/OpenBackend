@@ -12,10 +12,11 @@ import (
     "github.com/gin-gonic/gin"
     "go.mongodb.org/mongo-driver/bson"
     "go.mongodb.org/mongo-driver/bson/primitive"
-    "github.com/google/generative-ai-go/genai"
-    "google.golang.org/api/option"
     "jevi-chat/config"
     "jevi-chat/models"
+     "bytes"
+    "encoding/json"
+
 )
 
 // ===== PDF MANAGEMENT =====
@@ -189,74 +190,139 @@ func UploadPDF(c *gin.Context) {
 
 
 // processPDFWithGemini - Enhanced PDF processing with Gemini AI
+// func processPDFWithGemini(filePath, apiKey string) (string, error) {
+//     ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+//     defer cancel()
+    
+//     // Create client with project-specific API key
+//     client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
+//     if err != nil {
+//         return "", fmt.Errorf("failed to create Gemini client: %v", err)
+//     }
+//     defer client.Close()
+    
+//     // Upload file to Gemini
+//     file, err := client.UploadFileFromPath(ctx, filePath, nil)
+//     if err != nil {
+//         return "", fmt.Errorf("failed to upload file to Gemini: %v", err)
+//     }
+    
+//     // Wait for file to be processed with timeout
+//     maxWaitTime := 30 * time.Second
+//     startTime := time.Now()
+    
+//     for file.State == genai.FileStateProcessing {
+//         if time.Since(startTime) > maxWaitTime {
+//             return "", fmt.Errorf("file processing timeout")
+//         }
+        
+//         time.Sleep(2 * time.Second)
+//         file, err = client.GetFile(ctx, file.Name)
+//         if err != nil {
+//             return "", fmt.Errorf("failed to check file status: %v", err)
+//         }
+//     }
+    
+//     if file.State != genai.FileStateActive {
+//         return "", fmt.Errorf("file processing failed with state: %v", file.State)
+//     }
+    
+//     // Process the PDF with enhanced prompt
+//     model := client.GenerativeModel("gemini-1.5-flash")
+//     resp, err := model.GenerateContent(ctx, 
+//         genai.FileData{URI: file.URI, MIMEType: file.MIMEType},
+//         genai.Text(`Extract and organize all information from this document in a structured format. 
+//         Include:
+//         1. Main topics and sections with clear headings
+//         2. Key points and important details
+//         3. Any procedures, steps, or instructions
+//         4. Important facts, figures, and data
+//         5. Contact information if present
+//         6. Definitions and terminology
+//         7. Tables and lists if any
+        
+//         Format the content clearly with headings and bullet points where appropriate. 
+//         This will be used as a knowledge base for answering user questions.
+//         Make sure to preserve the logical structure and hierarchy of information.
+//         ➡️ Limit your answer to 2–3 concise, informative sentences unless more is absolutely required.
+//         `),
+//     )
+    
+//     if err != nil {
+//         return "", fmt.Errorf("failed to generate content: %v", err)
+//     }
+    
+//     if len(resp.Candidates) > 0 && len(resp.Candidates[0].Content.Parts) > 0 {
+//         return string(resp.Candidates[0].Content.Parts[0].(genai.Text)), nil
+//     }
+    
+//     return "", fmt.Errorf("no content generated from PDF")
+// }
+
 func processPDFWithGemini(filePath, apiKey string) (string, error) {
-    ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-    defer cancel()
-    
-    // Create client with project-specific API key
-    client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
+    // ✅ Step 1: Read file content (text)
+    content, err := os.ReadFile(filePath)
     if err != nil {
-        return "", fmt.Errorf("failed to create Gemini client: %v", err)
+        return "", fmt.Errorf("failed to read PDF file: %v", err)
     }
-    defer client.Close()
-    
-    // Upload file to Gemini
-    file, err := client.UploadFileFromPath(ctx, filePath, nil)
+
+    // ✅ Step 2: Send to OpenAI for summarization
+    prompt := fmt.Sprintf(`Extract the key sections and details from the following document content. Format it clearly:
+
+---
+%s
+---
+`, string(content))
+
+    response, err := callOpenAI(apiKey, prompt)
     if err != nil {
-        return "", fmt.Errorf("failed to upload file to Gemini: %v", err)
+        return "", err
     }
-    
-    // Wait for file to be processed with timeout
-    maxWaitTime := 30 * time.Second
-    startTime := time.Now()
-    
-    for file.State == genai.FileStateProcessing {
-        if time.Since(startTime) > maxWaitTime {
-            return "", fmt.Errorf("file processing timeout")
-        }
-        
-        time.Sleep(2 * time.Second)
-        file, err = client.GetFile(ctx, file.Name)
-        if err != nil {
-            return "", fmt.Errorf("failed to check file status: %v", err)
-        }
-    }
-    
-    if file.State != genai.FileStateActive {
-        return "", fmt.Errorf("file processing failed with state: %v", file.State)
-    }
-    
-    // Process the PDF with enhanced prompt
-    model := client.GenerativeModel("gemini-1.5-flash")
-    resp, err := model.GenerateContent(ctx, 
-        genai.FileData{URI: file.URI, MIMEType: file.MIMEType},
-        genai.Text(`Extract and organize all information from this document in a structured format. 
-        Include:
-        1. Main topics and sections with clear headings
-        2. Key points and important details
-        3. Any procedures, steps, or instructions
-        4. Important facts, figures, and data
-        5. Contact information if present
-        6. Definitions and terminology
-        7. Tables and lists if any
-        
-        Format the content clearly with headings and bullet points where appropriate. 
-        This will be used as a knowledge base for answering user questions.
-        Make sure to preserve the logical structure and hierarchy of information.
-        ➡️ Limit your answer to 2–3 concise, informative sentences unless more is absolutely required.
-        `),
-    )
-    
-    if err != nil {
-        return "", fmt.Errorf("failed to generate content: %v", err)
-    }
-    
-    if len(resp.Candidates) > 0 && len(resp.Candidates[0].Content.Parts) > 0 {
-        return string(resp.Candidates[0].Content.Parts[0].(genai.Text)), nil
-    }
-    
-    return "", fmt.Errorf("no content generated from PDF")
+
+    return response, nil
 }
+
+func callOpenAI(apiKey, prompt string) (string, error) {
+    url := "https://api.openai.com/v1/chat/completions"
+    bodyData := map[string]interface{}{
+        "model": "gpt-3.5-turbo",
+        "messages": []map[string]string{
+            {"role": "system", "content": "You are a document summarizer."},
+            {"role": "user", "content": prompt},
+        },
+    }
+
+    bodyBytes, _ := json.Marshal(bodyData)
+    req, _ := http.NewRequest("POST", url, bytes.NewBuffer(bodyBytes))
+    req.Header.Set("Authorization", "Bearer "+apiKey)
+    req.Header.Set("Content-Type", "application/json")
+
+    client := &http.Client{}
+    res, err := client.Do(req)
+    if err != nil {
+        return "", fmt.Errorf("OpenAI API request failed: %v", err)
+    }
+    defer res.Body.Close()
+
+    var result struct {
+        Choices []struct {
+            Message struct {
+                Content string `json:"content"`
+            } `json:"message"`
+        } `json:"choices"`
+    }
+
+    if err := json.NewDecoder(res.Body).Decode(&result); err != nil {
+        return "", fmt.Errorf("failed to parse OpenAI response: %v", err)
+    }
+
+    if len(result.Choices) == 0 {
+        return "", fmt.Errorf("OpenAI returned no response")
+    }
+
+    return result.Choices[0].Message.Content, nil
+}
+
 
 // DeletePDF - Delete specific PDF file
 func DeletePDF(c *gin.Context) {

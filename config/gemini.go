@@ -5,10 +5,14 @@ import (
     "fmt"
     "log"
     "os"
-    "time"
+
     "regexp"
     "github.com/google/generative-ai-go/genai"
     "google.golang.org/api/option"
+
+  "net/http"
+  "bytes"
+  "encoding/json"
 )
 
 var GeminiClient *genai.Client
@@ -30,47 +34,53 @@ func InitGemini() {
     log.Println("✅ Gemini client initialized successfully")
 }
 
+type OpenAIResponse struct {
+    Choices []struct {
+        Message struct {
+            Content string `json:"content"`
+        } `json:"message"`
+    } `json:"choices"`
+}
+
+
 // Generates a polished, human-like response
 func GenerateResponse(userPrompt string, pdfContext string) (string, error) {
-    ctx := context.Background()
-    model := GeminiClient.GenerativeModel("gemini-1.5-flash")
+    apiKey := os.Getenv("OPENAI_API_KEY")
+    if apiKey == "" {
+        return "", fmt.Errorf("OpenAI API key not set")
+    }
 
-    // Add randomness to avoid caching/repetition
-    noise := fmt.Sprintf("<!-- %d -->", time.Now().UnixNano()%1000)
+    url := "https://api.openai.com/v1/chat/completions"
+    payload := map[string]interface{}{
+        "model": "gpt-3.5-turbo",
+        "messages": []map[string]string{
+            {"role": "system", "content": "You are a helpful assistant. Respond briefly and clearly."},
+            {"role": "user", "content": fmt.Sprintf("Context: %s\n\nQuestion: %s", pdfContext, userPrompt)},
+        },
+    }
 
-    // Final prompt construction
-fullPrompt := fmt.Sprintf(`
-You're a friendly and respectful assistant — reply like a smart friend would, not like a robot.
+    body, _ := json.Marshal(payload)
+    req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
+    req.Header.Set("Authorization", "Bearer "+apiKey)
+    req.Header.Set("Content-Type", "application/json")
 
-Give a short, helpful answer (1–2 lines max). Don’t mention context, background, or any documents.
-
-Speak naturally, be polite, and don’t use robotic phrases.
-
-Question: %s
-
-Context: %s
-
-%s
-`, userPrompt, pdfContext, noise)
-
-
-
-    // Generate content using Gemini
-    resp, err := model.GenerateContent(ctx, genai.Text(fullPrompt))
+    client := &http.Client{}
+    resp, err := client.Do(req)
     if err != nil {
-        log.Printf("❌ Gemini content generation failed: %v", err)
-        return "", fmt.Errorf("failed to generate content: %v", err)
+        return "", err
+    }
+    defer resp.Body.Close()
+
+    var res OpenAIResponse
+    if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+        return "", err
     }
 
-    if len(resp.Candidates) > 0 && len(resp.Candidates[0].Content.Parts) > 0 {
-        text := string(resp.Candidates[0].Content.Parts[0].(genai.Text))
-
-        // Optional: clean robotic endings if any
-        cleaned := cleanResponse(text)
-        return cleaned, nil
+    if len(res.Choices) > 0 {
+        return res.Choices[0].Message.Content, nil
     }
 
-    return "No response generated", nil
+    return "No response", nil
 }
 
 func cleanResponse(raw string) string {
