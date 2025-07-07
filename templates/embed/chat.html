@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{.project.Name}} - AI Chat Assistant</title>
+    <title>{{.project.Name}} - Troika Ai Assistant</title>
     <style>
         * {
             margin: 0;
@@ -581,7 +581,7 @@
             <h1>{{.project.Name}}</h1>
             <div class="chat-status" id="chatStatus">
                 <span class="status-indicator" aria-hidden="true"></span>
-                <span>AI Assistant Online</span>
+                <span>Troika Ai Assistant Online</span>
             </div>
         </header>
         
@@ -671,7 +671,7 @@
         // Configuration
         const CONFIG = {
             projectId: '{{.project_id}}',
-            apiUrl: 'https://troikabackend.onrender.com',
+            apiUrl: 'https://openbackend-rvvs.onrender.com',
             sessionId: 'embed_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
             maxRetries: 3,
             retryDelay: 2000,
