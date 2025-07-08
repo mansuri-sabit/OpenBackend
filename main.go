@@ -91,7 +91,7 @@ func main() {
 	// Server configuration
 	port := os.Getenv("PORT")
 	if port == "" || len(port) > 5 {
-		port = "8082"
+		port = "8080"
 	}
 
 	// Server startup messages
@@ -101,8 +101,8 @@ func main() {
 	log.Printf("🌐 CORS: Enabled with %d allowed origins", len(corsConfig.AllowOrigins))
 	log.Printf("🔒 Security: Enhanced headers for iframe support")
 	
-	// ⭐️⭐️⭐️ Correct way to start Gin server (so CORS works!) ⭐️⭐️⭐️
-	log.Fatal(r.Run("0.0.0.0:" + port))
+	// Start server
+	log.Fatal(http.ListenAndServe("0.0.0.0:"+port, r))
 }
 
 // ✅ Complete route setup with PUBLIC PDF upload
