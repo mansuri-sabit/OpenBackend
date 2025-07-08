@@ -101,8 +101,8 @@ func main() {
 	log.Printf("🌐 CORS: Enabled with %d allowed origins", len(corsConfig.AllowOrigins))
 	log.Printf("🔒 Security: Enhanced headers for iframe support")
 	
-	// Start server
-	log.Fatal(http.ListenAndServe("0.0.0.0:"+port, r))
+	// ⭐️⭐️⭐️ Correct way to start Gin server (so CORS works!) ⭐️⭐️⭐️
+	log.Fatal(r.Run("0.0.0.0:" + port))
 }
 
 // ✅ Complete route setup with PUBLIC PDF upload
